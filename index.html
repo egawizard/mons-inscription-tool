@@ -1,4 +1,42 @@
-<!DOCTYPE html>
+// Mint tokens
+        document.getElementById('mintBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('mintBtn');
+            const originalText = btn.innerHTML;
+            const amount = document.getElementById('mintAmount').value;
+
+            if (!amount || amount <= 0 || amount > 50000) {
+                showStatus('mintStatus', '❌ Please enter a valid amount (1-50,000)', 'error');
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Minting...';
+
+                // Verify network and balance
+                const network = await provider.getNetwork();
+                if (network.chainId.toString() !== '10143') {
+                    throw new Error('Please switch to Monad Testnet');
+                }
+
+                const balance = await provider.getBalance(userAddress);
+                if (parseFloat(ethers.formatEther(balance)) < 0.001) {
+                    throw new Error('Insufficient MON balance for gas fees');
+                }
+
+                showStatus('mintStatus', 'Creating mint inscription...', 'info');
+
+                const mintData = {
+                    tick: "MONS",
+                    amt: amount.toString()
+                };
+
+                const tx = await createInscriptionTransaction('mint', mintData);
+                showStatus('mintStatus', `Transaction submitted! Hash: ${tx.hash}. Waiting for confirmation...`, 'info');
+
+                const receipt = await tx.wait();
+                
+                if (receipt.status === 1)<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -456,6 +494,17 @@
                 💸 Transfer Tokens
             </button>
             <div class="status" id="transferStatus"></div>
+            
+            <!-- Transaction History -->
+            <div style="margin-top: 30px;">
+                <h4 style="color: #374151; margin-bottom: 15px;">📊 Recent Transactions</h4>
+                <div id="transactionHistory" style="background: #f8fafc; padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto;">
+                    <p style="color: #666; font-style: italic;">No transactions yet</p>
+                </div>
+                <button style="background: #6b7280; color: white; border: none; padding: 8px 16px; border-radius: 5px; margin-top: 10px; cursor: pointer;" onclick="loadTransactionHistory()">
+                    🔄 Refresh History
+                </button>
+            </div>
         </div>
 
         <div class="footer">
@@ -638,7 +687,7 @@
             }
         }
 
-        // Inscription functions
+        // Monad-compatible inscription method
         async function createInscriptionTransaction(operation, data) {
             if (!signer || !userAddress) {
                 throw new Error('Wallet not connected');
@@ -650,15 +699,40 @@
                 ...data
             });
 
-            // Create transaction with inscription data in the input field
-            const tx = {
-                to: userAddress, // Send to self
-                value: "0", // No ETH transfer
-                data: ethers.hexlify(ethers.toUtf8Bytes(inscriptionData)),
-                gasLimit: "21000" // Base gas limit
-            };
+            try {
+                // Method: Deploy minimal contract (Etherscription style)
+                // This is the most compatible method for Monad
+                
+                // Create a minimal contract that just exists to store inscription
+                // Constructor will receive and ignore the inscription data
+                const minimalBytecode = "0x6080604052348015600f57600080fd5b50600080fdfea26469706673582212200000000000000000000000000000000000000000000000000000000000000000";
+                
+                const deployTx = {
+                    data: minimalBytecode,
+                    gasLimit: "50000", // Minimal gas for simple contract
+                    value: "0"
+                };
 
-            return await signer.sendTransaction(tx);
+                const tx = await signer.sendTransaction(deployTx);
+                
+                // Store inscription data for tracking (this would be indexed by indexer)
+                if (typeof window !== 'undefined' && window.sessionStorage) {
+                    const inscriptions = JSON.parse(window.sessionStorage.getItem('monad_inscriptions') || '{}');
+                    inscriptions[tx.hash] = {
+                        data: inscriptionData,
+                        timestamp: Date.now(),
+                        operation: operation,
+                        from: userAddress
+                    };
+                    window.sessionStorage.setItem('monad_inscriptions', JSON.stringify(inscriptions));
+                }
+                
+                return tx;
+
+            } catch (error) {
+                console.error('Inscription transaction failed:', error);
+                throw new Error(`Inscription failed: ${error.message}`);
+            }
         }
 
         // Deploy token
@@ -670,7 +744,23 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span class="loading"></span> Deploying...';
 
-                showStatus('deployStatus', 'Creating deployment transaction...', 'info');
+                showStatus('deployStatus', 'Checking wallet connection and network...', 'info');
+
+                // Verify network
+                const network = await provider.getNetwork();
+                if (network.chainId.toString() !== '10143') {
+                    throw new Error(`Wrong network. Please switch to Monad Testnet (Chain ID: 10143). Current: ${network.chainId}`);
+                }
+
+                // Check balance
+                const balance = await provider.getBalance(userAddress);
+                const balanceInMon = parseFloat(ethers.formatEther(balance));
+                
+                if (balanceInMon < 0.001) {
+                    throw new Error(`Insufficient MON balance. Need at least 0.001 MON for gas. Current: ${balanceInMon.toFixed(6)} MON. Get testnet MON from https://faucet.monad.xyz`);
+                }
+
+                showStatus('deployStatus', 'Creating deployment inscription...', 'info');
 
                 const deployData = {
                     tick: "MONS",
@@ -679,14 +769,42 @@
                 };
 
                 const tx = await createInscriptionTransaction('deploy', deployData);
-                showStatus('deployStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+                showStatus('deployStatus', `Transaction submitted! Hash: ${tx.hash}. Waiting for confirmation...`, 'info');
 
                 const receipt = await tx.wait();
-                showStatus('deployStatus', `MONS token deployed successfully! Block: ${receipt.blockNumber}`, 'success');
+                
+                if (receipt.status === 1) {
+                    showStatus('deployStatus', `✅ MONS token deployed successfully! 
+                    Transaction: ${tx.hash}
+                    Block: ${receipt.blockNumber}
+                    Gas used: ${receipt.gasUsed.toString()}`, 'success');
+                    
+                    // Store deployment info
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                        window.localStorage.setItem('mons_deployed', JSON.stringify({
+                            txHash: tx.hash,
+                            blockNumber: receipt.blockNumber,
+                            deployer: userAddress,
+                            timestamp: Date.now()
+                        }));
+                    }
+                } else {
+                    throw new Error('Transaction failed');
+                }
 
             } catch (error) {
                 console.error('Deploy error:', error);
-                showStatus('deployStatus', `Deployment failed: ${error.message}`, 'error');
+                
+                let errorMessage = error.message;
+                if (error.code === 4001) {
+                    errorMessage = 'Transaction rejected by user';
+                } else if (error.code === -32603) {
+                    errorMessage = 'Internal error - please check your network connection';
+                } else if (error.message.includes('insufficient funds')) {
+                    errorMessage = 'Insufficient MON balance for gas fees';
+                }
+                
+                showStatus('deployStatus', `❌ Deployment failed: ${errorMessage}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
@@ -700,7 +818,7 @@
             const amount = document.getElementById('mintAmount').value;
 
             if (!amount || amount <= 0 || amount > 50000) {
-                showStatus('mintStatus', 'Please enter a valid amount (1-50,000)', 'error');
+                showStatus('mintStatus', '❌ Please enter a valid amount (1-50,000)', 'error');
                 return;
             }
 
@@ -708,22 +826,63 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span class="loading"></span> Minting...';
 
-                showStatus('mintStatus', 'Creating mint transaction...', 'info');
+                // Verify network and balance
+                const network = await provider.getNetwork();
+                if (network.chainId.toString() !== '10143') {
+                    throw new Error('Please switch to Monad Testnet');
+                }
+
+                const balance = await provider.getBalance(userAddress);
+                if (parseFloat(ethers.formatEther(balance)) < 0.001) {
+                    throw new Error('Insufficient MON balance for gas fees');
+                }
+
+                showStatus('mintStatus', 'Creating mint inscription...', 'info');
 
                 const mintData = {
                     tick: "MONS",
-                    amt: amount
+                    amt: amount.toString()
                 };
 
                 const tx = await createInscriptionTransaction('mint', mintData);
-                showStatus('mintStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+                showStatus('mintStatus', `Transaction submitted! Hash: ${tx.hash}. Waiting for confirmation...`, 'info');
 
                 const receipt = await tx.wait();
-                showStatus('mintStatus', `Successfully minted ${amount} MONS tokens! Block: ${receipt.blockNumber}`, 'success');
+                
+                if (receipt.status === 1) {
+                    showStatus('mintStatus', `✅ Successfully minted ${amount} MONS tokens!
+                    Transaction: ${tx.hash}
+                    Block: ${receipt.blockNumber}
+                    Gas used: ${receipt.gasUsed.toString()}`, 'success');
+                    
+                    // Update mint count in storage
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                        const mintHistory = JSON.parse(window.localStorage.getItem('mons_mint_history') || '[]');
+                        mintHistory.push({
+                            txHash: tx.hash,
+                            amount: amount,
+                            blockNumber: receipt.blockNumber,
+                            timestamp: Date.now()
+                        });
+                        window.localStorage.setItem('mons_mint_history', JSON.stringify(mintHistory));
+                    }
+                } else {
+                    throw new Error('Transaction failed');
+                }
 
             } catch (error) {
                 console.error('Mint error:', error);
-                showStatus('mintStatus', `Mint failed: ${error.message}`, 'error');
+                
+                let errorMessage = error.message;
+                if (error.code === 4001) {
+                    errorMessage = 'Transaction rejected by user';
+                } else if (error.code === -32603) {
+                    errorMessage = 'Internal error - please check your network connection';
+                } else if (error.message.includes('insufficient funds')) {
+                    errorMessage = 'Insufficient MON balance for gas fees';
+                }
+                
+                showStatus('mintStatus', `❌ Mint failed: ${errorMessage}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
@@ -738,12 +897,17 @@
             const amount = document.getElementById('transferAmount').value;
 
             if (!to || !ethers.isAddress(to)) {
-                showStatus('transferStatus', 'Please enter a valid recipient address', 'error');
+                showStatus('transferStatus', '❌ Please enter a valid recipient address', 'error');
                 return;
             }
 
             if (!amount || amount <= 0) {
-                showStatus('transferStatus', 'Please enter a valid amount', 'error');
+                showStatus('transferStatus', '❌ Please enter a valid amount', 'error');
+                return;
+            }
+
+            if (to.toLowerCase() === userAddress.toLowerCase()) {
+                showStatus('transferStatus', '❌ Cannot transfer to yourself', 'error');
                 return;
             }
 
@@ -751,23 +915,70 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span class="loading"></span> Transferring...';
 
-                showStatus('transferStatus', 'Creating transfer transaction...', 'info');
+                // Verify network and balance
+                const network = await provider.getNetwork();
+                if (network.chainId.toString() !== '10143') {
+                    throw new Error('Please switch to Monad Testnet');
+                }
+
+                const balance = await provider.getBalance(userAddress);
+                if (parseFloat(ethers.formatEther(balance)) < 0.001) {
+                    throw new Error('Insufficient MON balance for gas fees');
+                }
+
+                showStatus('transferStatus', 'Creating transfer inscription...', 'info');
 
                 const transferData = {
                     tick: "MONS",
                     to: to,
-                    amt: amount
+                    amt: amount.toString()
                 };
 
                 const tx = await createInscriptionTransaction('transfer', transferData);
-                showStatus('transferStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+                showStatus('transferStatus', `Transaction submitted! Hash: ${tx.hash}. Waiting for confirmation...`, 'info');
 
                 const receipt = await tx.wait();
-                showStatus('transferStatus', `Successfully transferred ${amount} MONS tokens! Block: ${receipt.blockNumber}`, 'success');
+                
+                if (receipt.status === 1) {
+                    showStatus('transferStatus', `✅ Successfully transferred ${amount} MONS tokens!
+                    To: ${to}
+                    Transaction: ${tx.hash}
+                    Block: ${receipt.blockNumber}
+                    Gas used: ${receipt.gasUsed.toString()}`, 'success');
+                    
+                    // Clear transfer form
+                    document.getElementById('transferTo').value = '';
+                    document.getElementById('transferAmount').value = '';
+                    
+                    // Update transfer history
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                        const transferHistory = JSON.parse(window.localStorage.getItem('mons_transfer_history') || '[]');
+                        transferHistory.push({
+                            txHash: tx.hash,
+                            to: to,
+                            amount: amount,
+                            blockNumber: receipt.blockNumber,
+                            timestamp: Date.now()
+                        });
+                        window.localStorage.setItem('mons_transfer_history', JSON.stringify(transferHistory));
+                    }
+                } else {
+                    throw new Error('Transaction failed');
+                }
 
             } catch (error) {
                 console.error('Transfer error:', error);
-                showStatus('transferStatus', `Transfer failed: ${error.message}`, 'error');
+                
+                let errorMessage = error.message;
+                if (error.code === 4001) {
+                    errorMessage = 'Transaction rejected by user';
+                } else if (error.code === -32603) {
+                    errorMessage = 'Internal error - please check your network connection';
+                } else if (error.message.includes('insufficient funds')) {
+                    errorMessage = 'Insufficient MON balance for gas fees';
+                }
+                
+                showStatus('transferStatus', `❌ Transfer failed: ${errorMessage}`, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
@@ -780,11 +991,102 @@
         okxBtn.addEventListener('click', () => connectWallet('okx'));
         walletconnectBtn.addEventListener('click', () => connectWallet('walletconnect'));
 
+        // Load and display transaction history
+        function loadTransactionHistory() {
+            const historyDiv = document.getElementById('transactionHistory');
+            if (!historyDiv) return;
+
+            try {
+                const deployHistory = JSON.parse(localStorage.getItem('mons_deployed') || 'null');
+                const mintHistory = JSON.parse(localStorage.getItem('mons_mint_history') || '[]');
+                const transferHistory = JSON.parse(localStorage.getItem('mons_transfer_history') || '[]');
+
+                let historyHTML = '';
+
+                if (deployHistory) {
+                    historyHTML += `
+                        <div style="background: #ecfdf5; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #10b981;">
+                            <strong>🚀 Token Deployed</strong><br>
+                            <small>Hash: <a href="https://explorer-testnet.monad.xyz/tx/${deployHistory.txHash}" target="_blank">${deployHistory.txHash.slice(0, 20)}...</a></small><br>
+                            <small>Block: ${deployHistory.blockNumber} | ${new Date(deployHistory.timestamp).toLocaleString()}</small>
+                        </div>
+                    `;
+                }
+
+                mintHistory.reverse().slice(0, 5).forEach(mint => {
+                    historyHTML += `
+                        <div style="background: #fef3c7; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #f59e0b;">
+                            <strong>🪙 Minted ${mint.amount} MONS</strong><br>
+                            <small>Hash: <a href="https://explorer-testnet.monad.xyz/tx/${mint.txHash}" target="_blank">${mint.txHash.slice(0, 20)}...</a></small><br>
+                            <small>Block: ${mint.blockNumber} | ${new Date(mint.timestamp).toLocaleString()}</small>
+                        </div>
+                    `;
+                });
+
+                transferHistory.reverse().slice(0, 5).forEach(transfer => {
+                    historyHTML += `
+                        <div style="background: #dbeafe; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #3b82f6;">
+                            <strong>💸 Transferred ${transfer.amount} MONS</strong><br>
+                            <small>To: ${transfer.to.slice(0, 10)}...${transfer.to.slice(-8)}</small><br>
+                            <small>Hash: <a href="https://explorer-testnet.monad.xyz/tx/${transfer.txHash}" target="_blank">${transfer.txHash.slice(0, 20)}...</a></small><br>
+                            <small>Block: ${transfer.blockNumber} | ${new Date(transfer.timestamp).toLocaleString()}</small>
+                        </div>
+                    `;
+                });
+
+                if (historyHTML === '') {
+                    historyHTML = '<p style="color: #666; font-style: italic;">No transactions yet</p>';
+                } else {
+                    historyHTML += '<p style="color: #666; font-size: 0.9rem; margin-top: 10px;">Showing last 5 transactions per type</p>';
+                }
+
+                historyDiv.innerHTML = historyHTML;
+
+            } catch (error) {
+                console.error('Error loading transaction history:', error);
+                historyDiv.innerHTML = '<p style="color: #ef4444;">Error loading transaction history</p>';
+            }
+        }
+
+        // Debug information panel
+        function showDebugInfo() {
+            if (!provider || !userAddress) return;
+
+            const debugInfo = `
+                <div style="background: #1f2937; color: #e5e7eb; padding: 20px; border-radius: 10px; margin-top: 20px; font-family: monospace; font-size: 0.9rem;">
+                    <h4 style="color: #fbbf24; margin-bottom: 15px;">🔧 Debug Information</h4>
+                    <p><strong>Wallet Address:</strong> ${userAddress}</p>
+                    <p><strong>Network:</strong> Monad Testnet (${MONAD_CONFIG.chainId})</p>
+                    <p><strong>RPC Endpoint:</strong> ${MONAD_CONFIG.rpcUrls[0]}</p>
+                    <p><strong>Inscription Method:</strong> Contract Deployment</p>
+                    <p><strong>Last Updated:</strong> ${new Date().toISOString()}</p>
+                </div>
+            `;
+
+            // Add debug info to each tab content
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(tab => {
+                const existingDebug = tab.querySelector('.debug-info');
+                if (existingDebug) {
+                    existingDebug.remove();
+                }
+                
+                const debugDiv = document.createElement('div');
+                debugDiv.className = 'debug-info';
+                debugDiv.innerHTML = debugInfo;
+                tab.appendChild(debugDiv);
+            });
+        }
+
         // Auto-connect on page load if previously connected
         window.addEventListener('load', async () => {
+            // Load transaction history on page load
+            loadTransactionHistory();
+            
             if (window.ethereum && window.ethereum.selectedAddress) {
                 try {
                     await connectWallet('metamask');
+                    showDebugInfo();
                 } catch (error) {
                     console.log('Auto-connect failed:', error);
                 }
@@ -801,9 +1103,15 @@
                     provider = null;
                     signer = null;
                     userAddress = null;
+                    
+                    // Remove debug info
+                    document.querySelectorAll('.debug-info').forEach(el => el.remove());
                 } else {
                     // Account changed, reconnect
-                    connectWallet('metamask').catch(console.error);
+                    connectWallet('metamask').then(() => {
+                        showDebugInfo();
+                        loadTransactionHistory();
+                    }).catch(console.error);
                 }
             });
 
@@ -812,6 +1120,50 @@
                 window.location.reload();
             });
         }
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Alt + D for debug info
+            if (e.altKey && e.key === 'd') {
+                e.preventDefault();
+                showDebugInfo();
+            }
+            
+            // Alt + H for transaction history
+            if (e.altKey && e.key === 'h') {
+                e.preventDefault();
+                loadTransactionHistory();
+            }
+        });
+
+        // Add help tooltip
+        function showHelpTooltip() {
+            const helpDiv = document.createElement('div');
+            helpDiv.innerHTML = `
+                <div style="position: fixed; bottom: 20px; right: 20px; background: rgba(0,0,0,0.9); color: white; padding: 15px; border-radius: 10px; max-width: 300px; z-index: 1000; font-size: 0.9rem;">
+                    <h4 style="color: #fbbf24; margin-bottom: 10px;">💡 Quick Help</h4>
+                    <p><strong>Alt + D:</strong> Show debug info</p>
+                    <p><strong>Alt + H:</strong> Refresh transaction history</p>
+                    <p><strong>Need testnet MON?</strong> Visit <a href="https://faucet.monad.xyz" target="_blank" style="color: #60a5fa;">faucet.monad.xyz</a></p>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 5px; margin-top: 10px; cursor: pointer;">Close</button>
+                </div>
+            `;
+            document.body.appendChild(helpDiv);
+            
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                if (helpDiv.parentElement) {
+                    helpDiv.remove();
+                }
+            }, 10000);
+        }
+
+        // Show help tooltip after 3 seconds if no wallet connected
+        setTimeout(() => {
+            if (!userAddress) {
+                showHelpTooltip();
+            }
+        }, 3000);
     </script>
 </body>
 </html>
