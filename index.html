@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MONS Inscription Tool - Monad Testnet</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px 0;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.1rem;
+        }
+
+        .wallet-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .wallet-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .wallet-btn {
+            background: linear-gradient(45deg, #6366f1, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .wallet-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .wallet-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .wallet-info {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .wallet-info.active {
+            display: block;
+        }
+
+        .tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .tab {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            background: linear-gradient(45deg, #6366f1, #8b5cf6);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .tab-content {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .action-btn {
+            background: linear-gradient(45deg, #10b981, #059669);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        .action-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .token-info {
+            background: linear-gradient(45deg, #f59e0b, #d97706);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .token-info h3 {
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+
+        .info-item strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .info-item span {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .status.error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .status.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .footer {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+        }
+
+        .footer a {
+            color: #fbbf24;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .network-status {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .network-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .network-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .network-dot.connected {
+            background: #10b981;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .tabs {
+                flex-direction: column;
+            }
+            
+            .wallet-buttons {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 MONS Token Inscription Tool</h1>
+            <p>Deploy, Mint & Transfer MON-20 Tokens on Monad Testnet</p>
+        </div>
+
+        <div class="network-status">
+            <div class="network-indicator">
+                <div class="network-dot" id="networkDot"></div>
+                <span id="networkStatus">Disconnected from Monad Testnet</span>
+            </div>
+            <div id="networkInfo" style="font-size: 0.9rem; color: #666;"></div>
+        </div>
+
+        <div class="wallet-section">
+            <h3 style="margin-bottom: 20px; color: #374151;">Connect Your Wallet</h3>
+            <div class="wallet-buttons">
+                <button class="wallet-btn" id="metamaskBtn">
+                    🦊 MetaMask
+                </button>
+                <button class="wallet-btn" id="rabbyBtn">
+                    🐰 Rabby
+                </button>
+                <button class="wallet-btn" id="okxBtn">
+                    🔷 OKX Wallet
+                </button>
+                <button class="wallet-btn" id="walletconnectBtn">
+                    🔗 WalletConnect
+                </button>
+            </div>
+            <div class="wallet-info" id="walletInfo">
+                <h4>Connected Wallet</h4>
+                <p><strong>Address:</strong> <span id="walletAddress"></span></p>
+                <p><strong>Balance:</strong> <span id="walletBalance"></span> MON</p>
+                <p><strong>Network:</strong> <span id="walletNetwork"></span></p>
+            </div>
+        </div>
+
+        <div class="token-info">
+            <h3>📋 MONS Token Information</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <strong>Ticker</strong>
+                    <span>MONS</span>
+                </div>
+                <div class="info-item">
+                    <strong>Total Supply</strong>
+                    <span>72,000,000,000</span>
+                </div>
+                <div class="info-item">
+                    <strong>Mint Limit</strong>
+                    <span>50,000 per tx</span>
+                </div>
+                <div class="info-item">
+                    <strong>Standard</strong>
+                    <span>MON-20</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="deploy">Deploy Token</button>
+            <button class="tab" data-tab="mint">Mint Tokens</button>
+            <button class="tab" data-tab="transfer">Transfer Tokens</button>
+        </div>
+
+        <div class="tab-content active" id="deploy">
+            <h3 style="margin-bottom: 20px; color: #374151;">🎯 Deploy MONS Token</h3>
+            <div class="form-group">
+                <label for="deployTicker">Token Ticker</label>
+                <input type="text" id="deployTicker" value="MONS" readonly>
+            </div>
+            <div class="form-group">
+                <label for="deploySupply">Total Supply</label>
+                <input type="text" id="deploySupply" value="72000000000" readonly>
+            </div>
+            <div class="form-group">
+                <label for="deployLimit">Mint Limit per Transaction</label>
+                <input type="text" id="deployLimit" value="50000" readonly>
+            </div>
+            <button class="action-btn" id="deployBtn">
+                🚀 Deploy MONS Token
+            </button>
+            <div class="status" id="deployStatus"></div>
+        </div>
+
+        <div class="tab-content" id="mint">
+            <h3 style="margin-bottom: 20px; color: #374151;">🪙 Mint MONS Tokens</h3>
+            <div class="form-group">
+                <label for="mintTicker">Token Ticker</label>
+                <input type="text" id="mintTicker" value="MONS" readonly>
+            </div>
+            <div class="form-group">
+                <label for="mintAmount">Amount to Mint (Max: 50,000)</label>
+                <input type="number" id="mintAmount" placeholder="Enter amount" max="50000" min="1" value="50000">
+            </div>
+            <button class="action-btn" id="mintBtn">
+                🪙 Mint Tokens
+            </button>
+            <div class="status" id="mintStatus"></div>
+        </div>
+
+        <div class="tab-content" id="transfer">
+            <h3 style="margin-bottom: 20px; color: #374151;">💸 Transfer MONS Tokens</h3>
+            <div class="form-group">
+                <label for="transferTicker">Token Ticker</label>
+                <input type="text" id="transferTicker" value="MONS" readonly>
+            </div>
+            <div class="form-group">
+                <label for="transferTo">Recipient Address</label>
+                <input type="text" id="transferTo" placeholder="0x...">
+            </div>
+            <div class="form-group">
+                <label for="transferAmount">Amount to Transfer</label>
+                <input type="number" id="transferAmount" placeholder="Enter amount" min="1">
+            </div>
+            <button class="action-btn" id="transferBtn">
+                💸 Transfer Tokens
+            </button>
+            <div class="status" id="transferStatus"></div>
+        </div>
+
+        <div class="footer">
+            <p>Created by <a href="https://x.com/ega_2ez4crypto" target="_blank">@ega_2ez4crypto</a></p>
+            <p>Built for Monad Testnet Community</p>
+        </div>
+    </div>
+
+    <script>
+        // Monad Testnet Configuration
+        const MONAD_CONFIG = {
+            chainId: '0x279F', // 10143 in hex
+            chainName: 'Monad Testnet',
+            nativeCurrency: {
+                name: 'MON',
+                symbol: 'MON',
+                decimals: 18
+            },
+            rpcUrls: ['https://rpc-testnet.monadinfra.com'],
+            blockExplorerUrls: ['https://explorer-testnet.monad.xyz']
+        };
+
+        // Global state
+        let provider = null;
+        let signer = null;
+        let userAddress = null;
+
+        // DOM Elements
+        const metamaskBtn = document.getElementById('metamaskBtn');
+        const rabbyBtn = document.getElementById('rabbyBtn');
+        const okxBtn = document.getElementById('okxBtn');
+        const walletconnectBtn = document.getElementById('walletconnectBtn');
+        const walletInfo = document.getElementById('walletInfo');
+        const walletAddress = document.getElementById('walletAddress');
+        const walletBalance = document.getElementById('walletBalance');
+        const walletNetwork = document.getElementById('walletNetwork');
+        const networkDot = document.getElementById('networkDot');
+        const networkStatus = document.getElementById('networkStatus');
+        const networkInfo = document.getElementById('networkInfo');
+
+        // Tab handling
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                
+                // Update active tab
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Update active content
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                document.getElementById(tabName).classList.add('active');
+            });
+        });
+
+        // Utility functions
+        function showStatus(elementId, message, type = 'info') {
+            const statusEl = document.getElementById(elementId);
+            statusEl.textContent = message;
+            statusEl.className = `status ${type} show`;
+            setTimeout(() => {
+                statusEl.classList.remove('show');
+            }, 5000);
+        }
+
+        function updateNetworkStatus(connected, networkName = '') {
+            if (connected) {
+                networkDot.classList.add('connected');
+                networkStatus.textContent = `Connected to ${networkName}`;
+                networkInfo.textContent = `RPC: ${MONAD_CONFIG.rpcUrls[0]}`;
+            } else {
+                networkDot.classList.remove('connected');
+                networkStatus.textContent = 'Disconnected from Monad Testnet';
+                networkInfo.textContent = '';
+            }
+        }
+
+        async function switchToMonadTestnet() {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: MONAD_CONFIG.chainId }],
+                });
+            } catch (switchError) {
+                // If network doesn't exist, add it
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [MONAD_CONFIG],
+                        });
+                    } catch (addError) {
+                        throw new Error('Failed to add Monad Testnet to wallet');
+                    }
+                } else {
+                    throw switchError;
+                }
+            }
+        }
+
+        async function connectWallet(walletType) {
+            try {
+                let ethereum = null;
+                
+                // Detect wallet provider
+                switch (walletType) {
+                    case 'metamask':
+                        if (window.ethereum && window.ethereum.isMetaMask) {
+                            ethereum = window.ethereum;
+                        } else {
+                            throw new Error('MetaMask not detected. Please install MetaMask.');
+                        }
+                        break;
+                    case 'rabby':
+                        if (window.ethereum && window.ethereum.isRabby) {
+                            ethereum = window.ethereum;
+                        } else if (window.rabby) {
+                            ethereum = window.rabby;
+                        } else {
+                            throw new Error('Rabby Wallet not detected. Please install Rabby Wallet.');
+                        }
+                        break;
+                    case 'okx':
+                        if (window.okxwallet) {
+                            ethereum = window.okxwallet;
+                        } else if (window.ethereum && window.ethereum.isOkxWallet) {
+                            ethereum = window.ethereum;
+                        } else {
+                            throw new Error('OKX Wallet not detected. Please install OKX Wallet.');
+                        }
+                        break;
+                    case 'walletconnect':
+                        throw new Error('WalletConnect integration coming soon!');
+                        break;
+                    default:
+                        throw new Error('Unsupported wallet type');
+                }
+
+                // Request account access
+                const accounts = await ethereum.request({
+                    method: 'eth_requestAccounts',
+                });
+
+                if (accounts.length === 0) {
+                    throw new Error('No accounts found in wallet');
+                }
+
+                // Create provider and signer
+                provider = new ethers.BrowserProvider(ethereum);
+                signer = await provider.getSigner();
+                userAddress = accounts[0];
+
+                // Switch to Monad Testnet
+                await switchToMonadTestnet();
+
+                // Get network info
+                const network = await provider.getNetwork();
+                const balance = await provider.getBalance(userAddress);
+
+                // Update UI
+                walletAddress.textContent = `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
+                walletBalance.textContent = parseFloat(ethers.formatEther(balance)).toFixed(4);
+                walletNetwork.textContent = network.name || 'Unknown';
+                walletInfo.classList.add('active');
+
+                // Update network status
+                updateNetworkStatus(true, MONAD_CONFIG.chainName);
+
+                // Enable action buttons
+                document.getElementById('deployBtn').disabled = false;
+                document.getElementById('mintBtn').disabled = false;
+                document.getElementById('transferBtn').disabled = false;
+
+                showStatus('deployStatus', `Wallet connected successfully! Address: ${userAddress.slice(0, 10)}...`, 'success');
+
+            } catch (error) {
+                console.error('Wallet connection error:', error);
+                showStatus('deployStatus', `Connection failed: ${error.message}`, 'error');
+                updateNetworkStatus(false);
+            }
+        }
+
+        // Inscription functions
+        async function createInscriptionTransaction(operation, data) {
+            if (!signer || !userAddress) {
+                throw new Error('Wallet not connected');
+            }
+
+            const inscriptionData = JSON.stringify({
+                p: "mon-20",
+                op: operation,
+                ...data
+            });
+
+            // Create transaction with inscription data in the input field
+            const tx = {
+                to: userAddress, // Send to self
+                value: "0", // No ETH transfer
+                data: ethers.hexlify(ethers.toUtf8Bytes(inscriptionData)),
+                gasLimit: "21000" // Base gas limit
+            };
+
+            return await signer.sendTransaction(tx);
+        }
+
+        // Deploy token
+        document.getElementById('deployBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('deployBtn');
+            const originalText = btn.innerHTML;
+            
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Deploying...';
+
+                showStatus('deployStatus', 'Creating deployment transaction...', 'info');
+
+                const deployData = {
+                    tick: "MONS",
+                    max: "72000000000",
+                    lim: "50000"
+                };
+
+                const tx = await createInscriptionTransaction('deploy', deployData);
+                showStatus('deployStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+
+                const receipt = await tx.wait();
+                showStatus('deployStatus', `MONS token deployed successfully! Block: ${receipt.blockNumber}`, 'success');
+
+            } catch (error) {
+                console.error('Deploy error:', error);
+                showStatus('deployStatus', `Deployment failed: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Mint tokens
+        document.getElementById('mintBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('mintBtn');
+            const originalText = btn.innerHTML;
+            const amount = document.getElementById('mintAmount').value;
+
+            if (!amount || amount <= 0 || amount > 50000) {
+                showStatus('mintStatus', 'Please enter a valid amount (1-50,000)', 'error');
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Minting...';
+
+                showStatus('mintStatus', 'Creating mint transaction...', 'info');
+
+                const mintData = {
+                    tick: "MONS",
+                    amt: amount
+                };
+
+                const tx = await createInscriptionTransaction('mint', mintData);
+                showStatus('mintStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+
+                const receipt = await tx.wait();
+                showStatus('mintStatus', `Successfully minted ${amount} MONS tokens! Block: ${receipt.blockNumber}`, 'success');
+
+            } catch (error) {
+                console.error('Mint error:', error);
+                showStatus('mintStatus', `Mint failed: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Transfer tokens
+        document.getElementById('transferBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('transferBtn');
+            const originalText = btn.innerHTML;
+            const to = document.getElementById('transferTo').value;
+            const amount = document.getElementById('transferAmount').value;
+
+            if (!to || !ethers.isAddress(to)) {
+                showStatus('transferStatus', 'Please enter a valid recipient address', 'error');
+                return;
+            }
+
+            if (!amount || amount <= 0) {
+                showStatus('transferStatus', 'Please enter a valid amount', 'error');
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="loading"></span> Transferring...';
+
+                showStatus('transferStatus', 'Creating transfer transaction...', 'info');
+
+                const transferData = {
+                    tick: "MONS",
+                    to: to,
+                    amt: amount
+                };
+
+                const tx = await createInscriptionTransaction('transfer', transferData);
+                showStatus('transferStatus', `Transaction submitted! Hash: ${tx.hash}`, 'info');
+
+                const receipt = await tx.wait();
+                showStatus('transferStatus', `Successfully transferred ${amount} MONS tokens! Block: ${receipt.blockNumber}`, 'success');
+
+            } catch (error) {
+                console.error('Transfer error:', error);
+                showStatus('transferStatus', `Transfer failed: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        });
+
+        // Wallet connection event listeners
+        metamaskBtn.addEventListener('click', () => connectWallet('metamask'));
+        rabbyBtn.addEventListener('click', () => connectWallet('rabby'));
+        okxBtn.addEventListener('click', () => connectWallet('okx'));
+        walletconnectBtn.addEventListener('click', () => connectWallet('walletconnect'));
+
+        // Auto-connect on page load if previously connected
+        window.addEventListener('load', async () => {
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                try {
+                    await connectWallet('metamask');
+                } catch (error) {
+                    console.log('Auto-connect failed:', error);
+                }
+            }
+        });
+
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length === 0) {
+                    // User disconnected
+                    walletInfo.classList.remove('active');
+                    updateNetworkStatus(false);
+                    provider = null;
+                    signer = null;
+                    userAddress = null;
+                } else {
+                    // Account changed, reconnect
+                    connectWallet('metamask').catch(console.error);
+                }
+            });
+
+            window.ethereum.on('chainChanged', (chainId) => {
+                // Reload page on network change
+                window.location.reload();
+            });
+        }
+    </script>
+</body>
+</html>
